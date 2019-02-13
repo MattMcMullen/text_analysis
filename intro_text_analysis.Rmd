@@ -1,0 +1,308 @@
+---
+title: "Intro to Text Analysis"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(DT)
+library(tidytext)        # package for text analysis
+library(readxl)          # reads excel files, the format I used for the data
+
+```
+
+
+### Reading and tidying the text
+
+```{r}
+suicide_notes <- read_excel("suicide_notes.xlsx")
+
+suicide_notes
+```
+
+Notice that when you first read these documents, they're just a long string of text. We need to separate the words so they can be analyzed.
+
+The tidytext command unnest_tokens() will separate (or unnest) the words, so that there is one word per row. This command will also remove all punctuation and make everything lower case. In unnest_tokens(word, text), 'text' is the name of the original column with the text in it, and 'word' is what we want the new column to be named.
+
+```{r}
+suicide_words <- suicide_notes %>%
+  unnest_tokens(word, text)
+
+suicide_words
+
+```
+
+
+### Measures of text complexity
+
+The number of words used in a text can be calculated with a simple n() function that counts the number of words. 
+
+But many of the words we use are repetitions: Words like 'the' and 'a' are used over and over. So the number of distinct words is less than the total number of words. We can calculate the number of distinct words with n_distinct().
+
+Both of these measures are calculated below:
+
+```{r}
+suicide_words %>% 
+  group_by(author) %>% 
+  summarize(num_words = n(), lex_diversity = n_distinct(word))
+
+```
+
+The number of distinct words is a measure of *lexical diversity*. It is one measure of an individual's vocabulary. 
+
+Measures like this have been used to determine authorship (e.g., in cases where a suicide note is suspected of being fake and having been written by someone else), and some well-known studies have shown that low linguistic diversity at a young age has been found to predict dementia in old age.
+
+In general, it's apparent that longer notes have more distinct words, which makes sense. The following is a measure of *lexical density*, which is the number of distinct words divided by the total number of words. The higher the number, the higher proportion of distinct words are being used. The smaller the number, the more repeat words are used.
+
+```{r}
+suicide_words %>% 
+  group_by(author) %>% 
+  summarise(num_words = n(),
+            lex_diversity = n_distinct(word), 
+            lex_density = n_distinct(word)/n())
+```
+
+
+
+Another measure related to verbal complexity is the length of the words, i.e., the number of characters in each word. That can be calculated with nchar().
+
+Here is a table with the length of words, with the longest words at the top of the table.
+
+```{r}
+suicide_words %>%
+  mutate(word_length = nchar(word)) %>% 
+  distinct(word, word_length, author) %>% 
+  arrange(-word_length)
+
+```
+
+
+We can get the average word length for each author by using mean() on word_length:
+
+```{r}
+suicide_words %>%
+  group_by(author) %>% 
+  mutate(word_length = nchar(word)) %>% 
+  summarize(mean_word_length = mean(word_length)) %>% 
+  arrange(-mean_word_length)
+```
+
+
+Graph word length distributions for all notes.
+  
+```{r}
+suicide_words %>%
+  mutate(word_length = nchar(word)) %>% 
+  ggplot(aes(word_length)) +
+  geom_histogram(binwidth = 1) 
+```
+
+Recreate the above graph, but make two additions:  
+1. Add the following line: facet_wrap(vars(author), scales = "free_y"). This will create mini graphs for each author.  
+2. Add a line with labs(title = "") and then put a title in the quotes.
+
+
+
+
+
+
+
+
+### Basic word counts
+
+To get a sense of the content of suicide notes, we could look at the most common words used.
+
+```{r}
+suicide_words %>% 
+  count(word, sort = T) 
+
+```
+
+
+Copy-paste the above code below, and then separate the word counts by author by adding the following line between the two lines above: group_by(author) %>% .
+
+
+
+
+
+
+
+Graph the most common words for each author by copy-pasting the above code on top of the following. Make sure to connect it with the pipe.
+
+```{r}
+
+  top_n(5) %>%
+  ungroup() %>% 
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = author)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  facet_wrap(~author, scales = "free") +           # creates separate graphs for each author
+  scale_fill_viridis_d() +                         # uses a nicer color scheme
+  theme_minimal() +                                # removes the gray background
+  labs(x = NULL, y = "Most common words")
+
+
+```
+
+
+
+
+### Remove stop words
+
+The problem is that the most common words are not very interesting: the, of, and, etc. These are called stop words, and tidytext includes a file with them so you can remove them. Load them and view them:
+
+```{r}
+stop_words <- get_stopwords()
+stop_words$word
+```
+
+Use anti_join to remove all stopwords. anti_join() is the opposite of join: it will find the words in common between the two data frames (words and stop_words in this case), remove them, and leave all other words.
+
+```{r}
+suicide_words %>%
+  anti_join(stop_words)
+```
+
+
+To count these words, copy-paste the above code below, and pipe it to the following line: count(word, sort = T)
+
+
+
+
+Separated by author.
+
+```{r}
+suicide_words %>%
+  anti_join(stop_words) %>% 
+  group_by(author) %>% 
+  count(word, sort = T) 
+
+```
+
+
+Copy the code above and pipe it into the following, which creates a graph of the most common words in each note, but now with the stop words removed:
+
+
+```{r}
+
+
+  top_n(5) %>% 
+  ungroup() %>% 
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = author)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "Most common words") +
+  facet_wrap(vars(author), scales = "free") +
+  scale_fill_viridis_d() +
+  theme_minimal() +
+  coord_flip()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+## TF-IDF
+
+Term frequency-Inverse Document Frequency (TF-IDF) is a measure of the importance of a word in one document relative to other documents. It finds the words that are unique to one document or author. It's a mouthful so let's break it down:  
+
+Term frequency (TF) = the number of times a term appears in a document
+Document frequency (DF) = the number of other documents that contain the word
+Inverse document frequency = 1/DF. 
+
+TF-IDF = TF * IDF
+
+So it's a measure of how often a word appears in one document, divided by how often it appears in other documents.  
+
+For example, say we have 10 web pages. If the word 'the' appears in one web page 12 times, its TF = 12. If 'the' appears in all 10 of the web pages, its DF = 10 and its IDF = 1/10. That makes its TF-IDF = 12 * 1/10 or 1.2.  
+But if the word 'love' appears 8 times on one web page, but appears in just 3 of the web pages total, its TF-IDF would be 8 * 1/3 = 8/3 or 2.7.  
+Notice that the word 'love' has a higher TF-IDF than the common word 'the'. 'Love' appears often on that page and doesn't appear in all of the other pages, which makes it important for that particular page.
+
+The math is actually a little more complicated than that, and there are variations on the basic formulas, but that's the principle.
+
+See the chapter on TF-IDF in Text Mining with R for more information: https://www.tidytextmining.com/tfidf.html.
+
+
+
+The following large code chunk does all of the calculations for TF-IDF in a couple of steps, and then shows a table of them.
+
+```{r}
+suicide_word_counts <- suicide_notes %>%             # This counts each word per author
+  unnest_tokens(word, text) %>%
+  count(author, word, sort = TRUE) 
+
+total_words <- suicide_word_counts %>%               # This counts total words per author
+  group_by(author) %>% 
+  summarize(total = sum(n))
+
+suicide_word_counts <- left_join(suicide_word_counts, total_words)    # Joins the two
+
+suicide_tf_idf <- suicide_word_counts %>%             # Calculates tf-idf
+  bind_tf_idf(word, author, n)
+
+suicide_tf_idf %>%                                   # Displays it
+  arrange(-tf_idf)                          
+
+```
+
+
+
+Graph it.
+
+```{r}
+suicide_tf_idf %>%
+  arrange(-tf_idf) %>%
+  mutate(word = factor(word, levels = rev(unique(word)))) %>% 
+  group_by(author) %>% 
+  top_n(5) %>% 
+  ggplot(aes(word, tf_idf, fill = author)) +
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = "tf-idf") +
+  facet_wrap(~author, scales = "free") +
+  coord_flip()
+
+```
+
+
+Notice that, although we did not remove the stopwords for this, tf-idf automatically excludes most stop words because they will appear in all of the notes.
+
+
+To clean this graph up a little, add the following lines:  
+1. theme_minimal(), which will get rid of the grey background,   
+2. scale_fill_viridis_d(), which will use an improved color palette
+3. labs(title = "Most distinctive words in each suicide note")
+
+
+
+
+
+
+
+
+
+Assignment:
+Read in the file called manifestos.xslx. It contains the writings of several mass killers, incuding the Unabomber, Anders Breivik who killed 70+ people in Norway, Pekka-Eric Auvinen a school shooter from Finland, Elliot Rodger who killed people in California, Seung-Hui Cho who killed people at Virginia Tech, and Chris Harper-Mercer who killed people at a college in Oregon. (I collected these writings and put them into an excel file. Breivik wrote the most by far; I took only a small portion of his writings.)
+
+1. Read in the text and unnest the words.  
+2. Generate a table that includes both lexical diversity and density, and the total number of words, of each document.  
+3. Generate a table with the mean word length of each document.  
+4. Genernate a graph with mini histograms of each document's word lengths.  
+5. Remove stop words and then create a graph with the most common words in each document.  
+6. Calculate tf-idfs and create a graph of the words with the highest tf-idfs in each document.  
+
+
+
+
+
+
+
+
+

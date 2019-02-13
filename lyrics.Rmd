@@ -1,0 +1,395 @@
+---
+title: "genius"
+output: html_notebook
+---
+
+```{r}
+library(geniusr)                         # This package gets lyrics
+library(tidyverse)
+library(tidytext)
+library(wordcloud2)
+```
+
+### Using Genius to get lyrics
+
+Genius.com is a site that has music lyrics. It is used by music services like Apple Music and Spotify. The package geniusr is an R interface to the Genius site, and brings lyrics into R. Let's work through the geniusr API, starting with signing up for access:
+
+1. Go here and create a login and app https://genius.com/api-clients/new
+2. Go here and generate a client acces token https://genius.com/api-clients
+3. Call genius_token() and then enter the client access token in the console when prompted
+```{r}
+genius_token()
+```
+
+Once you get that working, let's work through how to get information from Genius.
+
+1. get album id. search for song with unique name on the album. find the song_id that matches the correct correct song
+
+```{r}
+search_song("like a rolling stone")
+```
+
+2. using song id, get more info about it. Get the album_id of the album the song is on.
+
+```{r}
+get_song_meta(54784)
+```
+
+3. using album id, get tracks on the album. this one we have to save as a file.
+
+```{r}
+highway_tracks <- scrape_tracklist(13573)
+highway_tracks
+```
+
+4. get the lyrics. map_df() repeatedly applies, or maps, one function (scrape_lyrics_url) to each line of let_it_be_tracks$song_lyrics_url, and puts the results into let_it_be_lyrics.
+
+```{r}
+highway_lyrics <- map_df(highway_tracks$song_lyrics_url, scrape_lyrics_url)
+highway_lyrics
+
+```
+
+
+### Preparing lyrics for analysis
+
+Now we need to use unnest_tokens() to separate the words one to a row, make them lowercase, and remove the punctuation. Put that into a new data frame called let_it_be_words. Note that the column with the lyrics is called 'line.'
+
+```{r}
+highway_words <- highway_lyrics %>%
+  unnest_tokens(word, line) %>% 
+  select(song_name, word)
+
+highway_words
+```
+
+
+
+
+### Word counts and word cloud
+
+We could do word counts like this:
+
+```{r}
+highway_words %>% 
+  count(word, sort = T)
+```
+
+
+But that has a lot of simple and unimportant words at the top of the list. Let's get rid of stop words first. Use anti_join(get_stopwords()) to do that. This also puts it into a datatable so it's interactive.
+
+
+```{r}
+highway_words %>% 
+  anti_join(get_stopwords()) %>% 
+  count(word, sort = T) %>% 
+  datatable()
+```
+
+
+This creates a wordcloud of the album.
+
+```{r}
+highway_words %>% 
+  anti_join(get_stopwords()) %>% 
+  count(word) %>% 
+  top_n(100) %>% 
+  wordcloud2(size = .5)
+```
+
+
+
+
+
+
+### Sentiment analysis
+
+Sentiment is another word for opinion or emotion. Sentiment analysis is the analysis of text for the opinions or emotions it contains. It is often used in marketing research to see customers' opinions in the reviews they leave on sites like Amazon.
+
+Sentiment analysis uses dictionaries that contain words related to sentiments and then compares the dictionary to the text being analyzed. Let's look at one of the sentiment dictionaries, called *bing* after one of the researchers who developed it.
+
+```{r}
+bing <- get_sentiments("bing")
+bing
+```
+
+
+
+We need to join the sentiment dictionary with our lyrics.
+
+```{r}
+highway_words %>% 
+  inner_join(bing) %>% 
+  count(word, sentiment, sort = TRUE)
+
+```
+
+
+
+Take the above code and pipe it into the following to create a graph of the table above.
+
+```{r}
+
+  group_by(sentiment) %>%
+  top_n(10) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free") +
+  labs(y = "Bob Dylan's Highway 61 album: Words that contribute the most to each sentiment",
+       x = NULL) +
+  scale_fill_viridis_d() +
+  coord_flip() +
+  theme_minimal()
+```
+
+
+
+
+
+
+
+
+word clouds with each sentiment:
+
+```{r}
+highway_words %>% 
+  inner_join(bing) %>% 
+  count(word, sentiment, sort = TRUE) %>% 
+  filter(sentiment == "positive") %>%
+  select(word, n) %>% 
+  wordcloud2()
+
+
+highway_words %>% 
+  inner_join(bing) %>% 
+  count(word, sentiment, sort = TRUE) %>% 
+  filter(sentiment == "negative") %>%
+  select(word, n) %>% 
+  wordcloud2()
+  
+```
+
+
+### Other sentiment dictionaries
+
+
+There are other sentiment dictionaries besides bing. One is called nrc. 
+
+```{r}
+nrc <- get_sentiments("nrc")
+nrc
+```
+
+
+Notice that this dictionary has several different sentiments, not just positive and negative.
+
+```{r}
+nrc %>% 
+  distinct(sentiment)
+```
+
+
+
+
+
+Conduct the same analysis as above - the tables and graphs of words that contribute to each sentiment, but do it for this new lexicon.
+Hint: When you create the graph, try a smaller value in top_n(), like 3 or 5.
+
+
+
+
+
+
+```{r}
+highway_words %>% 
+  inner_join(nrc) %>%  # join nrc score
+  count(word, sentiment, sort = TRUE) %>% 
+  group_by(sentiment) %>%
+  top_n(3) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~sentiment, scales = "free") +
+  labs(y = "Bob Dylan's Highway 61 album: Words that contribute the most to each sentiment",
+       x = NULL) +
+  coord_flip() +
+  scale_fill_viridis_d() +
+  theme_minimal()
+```
+
+
+
+
+
+### Bigrams
+
+So far we've only analyzed text one word at a time, but we can also analyze multiple word combinations. Bigrams are word pairs, and can be the focus of analysis just like individual words were above.
+
+Use unnest_tokens() again, but this time the tokens will be bigrams. 
+
+```{r}
+highway_bigrams <- highway_lyrics %>%
+  unnest_tokens(bigram, line, token = "ngrams", n = 2) %>% 
+  select(song_name, bigram)
+
+highway_bigrams
+
+
+```
+
+
+```{r}
+highway_lyrics %>%
+  unnest_tokens(bigram, line, token = "ngrams", n = 2) %>% 
+  select(song_name, bigram)
+
+```
+
+Notice that the 2nd word of the first bigram is the 1st word of the second bigram. In this way, every possible two-word combination is retained.
+
+To count the most common bigrams, copy-paste the above chunk into count(bigram, sort = T) below:
+
+
+
+
+
+
+
+This is the same problem as before, that many of the bigrams contain common and uninteresting words. It's a little more complicated to remove stop words from bigrams, but here's how to do it. The first couple of lines just repeat the unnesting process from above. The next lines separate them, check each word against the list of stop words, filter them out if they are, and then puts them back together with unite().
+
+
+```{r}
+highway_lyrics %>%
+  unnest_tokens(bigram, line, token = "ngrams", n = 2) %>% 
+  select(song_name, bigram) %>% 
+  separate(bigram, c("word1", "word2"), sep = " ") %>% 
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word) %>% 
+  unite(bigram, word1, word2, sep = " ")
+
+```
+
+Now take that whole chunk above and pipe it into the count(bigram, sort = T) again to see the difference in the top bigrams.
+
+```{r}
+highway_lyrics %>%
+  unnest_tokens(bigram, line, token = "ngrams", n = 2) %>% 
+  select(song_name, bigram) %>% 
+  separate(bigram, c("word1", "word2"), sep = " ") %>% 
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word) %>% 
+  unite(bigram, word1, word2, sep = " ") %>% 
+  count(bigram, sort = T)
+```
+
+
+Now take the above chunk, including the count() line, and pipe it into the following to create a word cloud of all the bigrams that occur more than once:
+
+```{r}
+
+
+  filter(n > 1) %>% 
+  wordcloud2(size = .5)
+```
+
+
+## Identifying specific word pairs
+
+Using bigrams, we can also see what words typically follow a given word. For example, which words follow I and you? This can tell us something about the psychology of how someone sees themselves vs. other people. 
+
+
+```{r}
+first_word <- c("i", "you")                                  # these need to be lowercase
+
+highway_lyrics %>%
+  unnest_tokens(bigram, line, token = "ngrams", n = 2) %>% 
+  select(song_name, bigram) %>% 
+  separate(bigram, c("word1", "word2"), sep = " ") %>% 
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word) %>% 
+  unite(bigram, word1, word2, sep = " ") %>% 
+  count(bigram, sort = T) %>%
+  separate(bigram, c("word1", "word2"), sep = " ") %>%       # separate the two words
+  filter(word1 %in% first_word) %>%                          # find first words from our list
+  count(word1, word2, wt = n, sort = TRUE) %>% 
+  rename(total = nn)
+
+```
+
+
+Take all of the above chunk that creates the I/you counts, put it on top of the following chunk (don't forget the pipe to connect them), and run it to create a graph.
+
+
+```{r}
+
+  mutate(word2 = factor(word2, levels = rev(unique(word2)))) %>%     # put the words in order
+  group_by(word1) %>% 
+  top_n(5) %>% 
+  ggplot(aes(word2, total, fill = word1)) +                          #
+  scale_fill_viridis_d() +                                           # set the color palette
+  geom_col(show.legend = FALSE) +
+  labs(x = NULL, y = NULL, title = "Word following:") +
+  facet_wrap(~word1, scales = "free") +
+  coord_flip()
+
+```
+
+
+Copy and paste the chunk above, but replace ("i", "you") with ("he", "she") to see what Bob has men and women doing in his songs.
+
+
+One final example: You can set a higher ngram. Let's look at 4-word patterns:
+  
+```{r}
+highway_lyrics %>%
+  unnest_tokens(words, line, token = "ngrams", n = 4) %>%        # get ngrams of 4
+  count(words, sort = T)
+
+```
+  
+
+
+
+How often does the line "like a rolling stone" appear on the album? Take the above chunk and copy-paste it below, and add the following line: filter(words == "like a rolling stone")
+
+```{r}
+highway_lyrics %>%
+  unnest_tokens(words, line, token = "ngrams", n = 4) %>%        # get ngrams
+  count(words, sort = T) %>% 
+  filter(words == "like a rolling stone")
+```
+
+
+
+
+
+
+Assigment:
+
+Pick an album of your choice - I recommend one with lots of lyrics.
+
+1. Find the album and get the lyrics, and unnest them.  
+2. Clean the lyrics by removing stopwords, and then create a table and word cloud with the words counts.  
+3. Do sentiment analyses using bing and nrc, and create graphs of the words that contribute most to each sentiment.  
+4. Create bigrams of the lyrics, remove the stopwords, and create a table and word cloud of the most common bigrams.  
+5. Use the bigram method to find the most common words that come after words of your choice, like i/you or he/she.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
