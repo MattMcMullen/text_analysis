@@ -21,6 +21,8 @@ Genius.com is a site that has music lyrics. It is used by music services like Ap
 genius_token()
 ```
 
+
+
 Once you get that working, let's work through how to get information from Genius.
 
 1. get album id. search for song with unique name on the album. find the song_id that matches the correct correct song
@@ -42,7 +44,7 @@ highway_tracks <- scrape_tracklist(13573)
 highway_tracks
 ```
 
-4. get the lyrics. map_df() repeatedly applies, or maps, one function (scrape_lyrics_url) to each line of let_it_be_tracks$song_lyrics_url, and puts the results into let_it_be_lyrics.
+4. get the lyrics. map_df() repeatedly applies, or maps, one function (scrape_lyrics_url) to each line of highway_tracks$song_lyrics_url, and puts the results into highway_lyrics.
 
 ```{r}
 highway_lyrics <- map_df(highway_tracks$song_lyrics_url, scrape_lyrics_url)
@@ -53,7 +55,7 @@ highway_lyrics
 
 ### Preparing lyrics for analysis
 
-Now we need to use unnest_tokens() to separate the words one to a row, make them lowercase, and remove the punctuation. Put that into a new data frame called let_it_be_words. Note that the column with the lyrics is called 'line.'
+Now we need to use unnest_tokens() to separate the words one to a row, make them lowercase, and remove the punctuation. Put that into a new data frame called highway_words. Note that the column with the lyrics is called 'line.'
 
 ```{r}
 highway_words <- highway_lyrics %>%
@@ -68,34 +70,34 @@ highway_words
 
 ### Word counts and word cloud
 
-We could do word counts like this:
+To get a sense of the common words on the album, pipe highway_words into count(word, sort = T)
+
+
+
+
+
+
+
+
+But that has a lot of simple and unimportant words at the top of the list. Let's get rid of stop words first. This uses anti_join() to remove the stopwords from our words:
 
 ```{r}
 highway_words %>% 
+  anti_join(get_stopwords()) %>% 
   count(word, sort = T)
 ```
 
 
-But that has a lot of simple and unimportant words at the top of the list. Let's get rid of stop words first. Use anti_join(get_stopwords()) to do that. This also puts it into a datatable so it's interactive.
+
+Create a word cloud by copy-pasting the code above and adding the following:
+
+1. Add the line top_n(200) to limit the number of words in the cloud to 200
+2. add the line wordcloud2(size = .5)
 
 
-```{r}
-highway_words %>% 
-  anti_join(get_stopwords()) %>% 
-  count(word, sort = T) %>% 
-  datatable()
-```
 
 
-This creates a wordcloud of the album.
 
-```{r}
-highway_words %>% 
-  anti_join(get_stopwords()) %>% 
-  count(word) %>% 
-  top_n(100) %>% 
-  wordcloud2(size = .5)
-```
 
 
 
@@ -115,7 +117,7 @@ bing
 
 
 
-We need to join the sentiment dictionary with our lyrics.
+We need to join the sentiment dictionary with our lyrics. inner_join() will retain all of the words that are present in both.
 
 ```{r}
 highway_words %>% 
@@ -130,13 +132,14 @@ Take the above code and pipe it into the following to create a graph of the tabl
 
 ```{r}
 
+
   group_by(sentiment) %>%
   top_n(10) %>%
   ungroup() %>%
   mutate(word = reorder(word, n)) %>%
   ggplot(aes(word, n, fill = sentiment)) +
   geom_col(show.legend = FALSE) +
-  facet_wrap(~sentiment, scales = "free") +
+  facet_wrap(vars(sentiment), scales = "free") +
   labs(y = "Bob Dylan's Highway 61 album: Words that contribute the most to each sentiment",
        x = NULL) +
   scale_fill_viridis_d() +
@@ -183,12 +186,10 @@ nrc
 ```
 
 
-Notice that this dictionary has several different sentiments, not just positive and negative.
+Notice that this dictionary has several different sentiments, not just positive and negative. You can view all the different sentiments by piping nrc into distinct(sentiment). Do that below:
 
-```{r}
-nrc %>% 
-  distinct(sentiment)
-```
+
+
 
 
 
@@ -202,23 +203,7 @@ Hint: When you create the graph, try a smaller value in top_n(), like 3 or 5.
 
 
 
-```{r}
-highway_words %>% 
-  inner_join(nrc) %>%  # join nrc score
-  count(word, sentiment, sort = TRUE) %>% 
-  group_by(sentiment) %>%
-  top_n(3) %>%
-  ungroup() %>%
-  mutate(word = reorder(word, n)) %>%
-  ggplot(aes(word, n, fill = sentiment)) +
-  geom_col(show.legend = FALSE) +
-  facet_wrap(~sentiment, scales = "free") +
-  labs(y = "Bob Dylan's Highway 61 album: Words that contribute the most to each sentiment",
-       x = NULL) +
-  coord_flip() +
-  scale_fill_viridis_d() +
-  theme_minimal()
-```
+
 
 
 
@@ -226,31 +211,24 @@ highway_words %>%
 
 ### Bigrams
 
-So far we've only analyzed text one word at a time, but we can also analyze multiple word combinations. Bigrams are word pairs, and can be the focus of analysis just like individual words were above.
-
-Use unnest_tokens() again, but this time the tokens will be bigrams. 
-
-```{r}
-highway_bigrams <- highway_lyrics %>%
-  unnest_tokens(bigram, line, token = "ngrams", n = 2) %>% 
-  select(song_name, bigram)
-
-highway_bigrams
-
-
-```
-
+So far we have been examining individual words, but it is often useful to examine words that appear together. To prepare the data we use unnest_tokens() again, but now we add token = "ngrams", n = 2 to look at word pairs or bigrams. Here is how to do that:
 
 ```{r}
 highway_lyrics %>%
   unnest_tokens(bigram, line, token = "ngrams", n = 2) %>% 
-  select(song_name, bigram)
+  select(bigram)
 
 ```
+
 
 Notice that the 2nd word of the first bigram is the 1st word of the second bigram. In this way, every possible two-word combination is retained.
 
-To count the most common bigrams, copy-paste the above chunk into count(bigram, sort = T) below:
+Once you are satisfied that it is working, make a dataframe of this new set of words called highway_bigrams. Here's a new way to do that. We have used this as an assignment operator: <- but you can also use it the other direction -> .
+
+Copy-paste the above code chunk, but then put the following line at the end of the last line:
+-> highway_bigrams
+
+Then view the new data frame by typing in its name.
 
 
 
@@ -258,13 +236,20 @@ To count the most common bigrams, copy-paste the above chunk into count(bigram, 
 
 
 
-This is the same problem as before, that many of the bigrams contain common and uninteresting words. It's a little more complicated to remove stop words from bigrams, but here's how to do it. The first couple of lines just repeat the unnesting process from above. The next lines separate them, check each word against the list of stop words, filter them out if they are, and then puts them back together with unite().
 
+
+To count the most common bigrams, pipe highway_bigrams into count(bigram, sort = T) below:
+
+
+
+
+
+
+
+This is the same problem as before, that many of the bigrams contain common and uninteresting words. It's a little more complicated to remove stop words from bigrams, but here's how to do it. The following separates the bigrams, checks each word against the list of stop words, filters them out if they are, and then puts them back together with unite().
 
 ```{r}
-highway_lyrics %>%
-  unnest_tokens(bigram, line, token = "ngrams", n = 2) %>% 
-  select(song_name, bigram) %>% 
+highway_bigrams %>% 
   separate(bigram, c("word1", "word2"), sep = " ") %>% 
   filter(!word1 %in% stop_words$word) %>%
   filter(!word2 %in% stop_words$word) %>% 
@@ -272,23 +257,29 @@ highway_lyrics %>%
 
 ```
 
-Now take that whole chunk above and pipe it into the count(bigram, sort = T) again to see the difference in the top bigrams.
+
+
+
+
+
+
+
+
+Now pipe the above code into count(bigram, sort = T) again to see the difference in the top bigrams when stopwords are removed:
+
+
+
+
+
+
+
+
+
+
+Now take the above chunk, including the count() line, and pipe it into the following to create a word cloud of all the bigrams that occur more than once in the album:
 
 ```{r}
-highway_lyrics %>%
-  unnest_tokens(bigram, line, token = "ngrams", n = 2) %>% 
-  select(song_name, bigram) %>% 
-  separate(bigram, c("word1", "word2"), sep = " ") %>% 
-  filter(!word1 %in% stop_words$word) %>%
-  filter(!word2 %in% stop_words$word) %>% 
-  unite(bigram, word1, word2, sep = " ") %>% 
-  count(bigram, sort = T)
-```
 
-
-Now take the above chunk, including the count() line, and pipe it into the following to create a word cloud of all the bigrams that occur more than once:
-
-```{r}
 
 
   filter(n > 1) %>% 
@@ -296,22 +287,18 @@ Now take the above chunk, including the count() line, and pipe it into the follo
 ```
 
 
+
+
 ## Identifying specific word pairs
 
-Using bigrams, we can also see what words typically follow a given word. For example, which words follow I and you? This can tell us something about the psychology of how someone sees themselves vs. other people. 
+Using bigrams, we can also see what words typically follow a given word. For example, which words follow I and you? This can tell us something about the psychology of how someone sees themselves vs. other people. Heres how to do that:
 
 
 ```{r}
 first_word <- c("i", "you")                                  # these need to be lowercase
 
-highway_lyrics %>%
-  unnest_tokens(bigram, line, token = "ngrams", n = 2) %>% 
-  select(song_name, bigram) %>% 
-  separate(bigram, c("word1", "word2"), sep = " ") %>% 
-  filter(!word1 %in% stop_words$word) %>%
-  filter(!word2 %in% stop_words$word) %>% 
-  unite(bigram, word1, word2, sep = " ") %>% 
-  count(bigram, sort = T) %>%
+highway_bigrams %>% 
+  count(bigram, sort = T) %>% 
   separate(bigram, c("word1", "word2"), sep = " ") %>%       # separate the two words
   filter(word1 %in% first_word) %>%                          # find first words from our list
   count(word1, word2, wt = n, sort = TRUE) %>% 
@@ -325,6 +312,8 @@ Take all of the above chunk that creates the I/you counts, put it on top of the 
 
 ```{r}
 
+
+
   mutate(word2 = factor(word2, levels = rev(unique(word2)))) %>%     # put the words in order
   group_by(word1) %>% 
   top_n(5) %>% 
@@ -333,12 +322,16 @@ Take all of the above chunk that creates the I/you counts, put it on top of the 
   geom_col(show.legend = FALSE) +
   labs(x = NULL, y = NULL, title = "Word following:") +
   facet_wrap(~word1, scales = "free") +
-  coord_flip()
+  coord_flip() +
+  theme_minimal()
 
 ```
 
 
 Copy and paste the chunk above, but replace ("i", "you") with ("he", "she") to see what Bob has men and women doing in his songs.
+
+
+
 
 
 One final example: You can set a higher ngram. Let's look at 4-word patterns:
@@ -355,12 +348,13 @@ highway_lyrics %>%
 
 How often does the line "like a rolling stone" appear on the album? Take the above chunk and copy-paste it below, and add the following line: filter(words == "like a rolling stone")
 
-```{r}
-highway_lyrics %>%
-  unnest_tokens(words, line, token = "ngrams", n = 4) %>%        # get ngrams
-  count(words, sort = T) %>% 
-  filter(words == "like a rolling stone")
-```
+
+
+
+
+
+
+
 
 
 
@@ -369,21 +363,13 @@ highway_lyrics %>%
 
 Assigment:
 
-Pick an album of your choice - I recommend one with lots of lyrics.
+Pick an album of your choice - I recommend one with lots of lyrics. Rap albums are great for this.
 
 1. Find the album and get the lyrics, and unnest them.  
 2. Clean the lyrics by removing stopwords, and then create a table and word cloud with the words counts.  
 3. Do sentiment analyses using bing and nrc, and create graphs of the words that contribute most to each sentiment.  
 4. Create bigrams of the lyrics, remove the stopwords, and create a table and word cloud of the most common bigrams.  
 5. Use the bigram method to find the most common words that come after words of your choice, like i/you or he/she.
-
-
-
-
-
-
-
-
 
 
 

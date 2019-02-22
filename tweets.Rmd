@@ -1,5 +1,5 @@
 ---
-title: "Sentiment analysis of tweets"
+title: "Text analysis of tweets"
 output: html_notebook
 ---
 
@@ -9,51 +9,41 @@ library(tidyverse)
 library(tidytext)
 library(DT)
 library(plotly)
+library(wordcloud2)
 ```
 
 
-Newspapers like the New York Times have twitter accounts that all tweet mainly headlines and descriptions of their articles. Examining these gives us a sense of what American news is covering.
+Newspapers like the New York Times have twitter accounts that tweet mainly headlines and descriptions of their articles. Examining these gives us a sense of what American news is covering.
 
-
+You shouldn't need to re-enter your rtweet credentials, but if you do, go back to that notebook and follow those instructions, copy-pasting the passwords here if necessary, and then be sure to delete them again.
 
 ```{r}
-news_tweets <- get_timeline("nytimes", n = 3000)
+news_tweets <- get_timeline("nytimes", n = 5000)
 
 ```
 
 
-
-
-
-
-
-Unnest
+The following unnests the text, makes it all lowercase, removes punctuation, and calls it news_words:
 
 ```{r}
-
-news_tweets %>% 
+news_words <- news_tweets %>% 
   unnest_tokens(word, text) %>% 
   select(screen_name, word)
 
-
 ```
-
-
 
 
 ## Word counts and word cloud
 
-
-```{r}
-news_words %>% 
-  count(word, sort = T) 
-
-```
+Get a look at the most important words by piping news_words into count(word, sort = T) below:
 
 
 
-But that has a lot of simple and unimportant words at the top of the list. Let's get rid of stop words first. Use anti_join(get_stopwords()) to do that.
 
+
+
+
+But that has a lot of simple and unimportant words at the top of the list. Let's get rid of stop words first. This uses anti_join() to remove the stopwords from our words:
 
 ```{r}
 news_words %>% 
@@ -62,16 +52,16 @@ news_words %>%
 ```
 
 
-Because tweets use web addresses, we sometimes get strange words like https. Let's get rid of any of those that make it to the top. 
+Because tweets use web addresses, we sometimes get strange "words" like https. Let's get rid of any of those that make it to the top. 
 
 1. Copy-paste the above chunk.  
-2. Add the following line:
+2. Add the following line between the anti_join() line and the count() line:
 filter(!word == "https")
-Add a line for each weird word you want to remove.
+Look for other weird words like that in first 200 words or so, and add a line for each one you want to remove.
 
-```{r}
 
-```
+
+
 
 
 
@@ -108,31 +98,24 @@ bing
 
 
 
-We need to join the sentiment dictionary with our text, in this case the lyrics.
+We need to join the sentiment dictionary with our text. The inner_join() command will only keep the words that are in common to both our list of words and the sentiment words.
 
 ```{r}
 news_words %>% 
   inner_join(bing) %>% 
   count(word, sentiment, sort = TRUE)
 
-
 ```
 
 
 
-
-
-
-trump is not a positive word here, it's a proper name, so filter it out by adding the following line: 
+We can also adjust our sentiment dictionary for our particular needs. For example, 'trump' is probably not a positive word here, it's a proper name, so filter it out by adding the following line above the count() line: 
 filter(!word == "trump")
 
-```{r}
-news_words %>% 
-  inner_join(bing) %>% 
-  filter(!word == "trump") %>% 
-  count(word, sentiment, sort = T)
 
-```
+
+
+
 
 
 
@@ -140,24 +123,19 @@ The following code creates a graph of the top words that contribute to each sent
 
 ```{r}
 
-news_words %>%
-  inner_join(bing) %>% 
-  filter(!word == "trump") %>% 
-  count(word, sentiment) %>% 
+
   group_by(sentiment) %>%
   top_n(10) %>%
   ungroup() %>%
   mutate(word = reorder(word, n)) %>%
   ggplot(aes(word, n, fill = sentiment)) +
   geom_col(show.legend = FALSE) +
-  facet_wrap(~sentiment, scales = "free") +
+  facet_wrap(vars(sentiment), scales = "free") +
   labs(y = "News headlines: Words that contribute the most to each sentiment",
        x = NULL) +
   coord_flip() +
   theme_minimal()
 ```
-
-
 
 
 
@@ -171,11 +149,15 @@ nrc
 
 
 
-Notice that this dictionary has several different sentiments, not just positive and negative.
-```{r}
-nrc %>% 
-  distinct(sentiment)
-```
+Notice that this dictionary has several different sentiments, not just positive and negative. 
+
+You can view all the different sentiments by piping nrc into distinct(sentiment). Do that below:
+
+
+
+
+
+
 
 
 
@@ -196,8 +178,7 @@ Using the same procedure as above, replicate the graph of words contributing to 
 
 ### Bigrams
 
-Use unnest_tokens() again, but this time the tokens will be bigrams - two words - rather than individual words. 
-Start from the beginning again, with the original dataset of tweets. 
+So far we have been examining individual words, but it is often useful to examine words that appear together. To prepare the data we use unnest_tokens() again, but now we add token = "ngrams", n = 2 to look at word pairs or bigrams. Here is how to do that:
 
 ```{r}
 
@@ -208,17 +189,10 @@ news_tweets %>%
 ```
 
 
+Now count the bigrams by piping the above code into count(words, sort = T).
 
 
-Now count the bigrams by copy-pasting the above code below and adding count(words, sort = T)
 
-
-```{r}
-news_tweets %>%
-  select(text) %>%                                                 # this selects just the text of the tweets
-  unnest_tokens(words, text, token = "ngrams", n = 2) %>% 
-  count(words, sort = T)
-```
 
 
 
@@ -226,8 +200,8 @@ We have the same problem as before, where most of the top bigrams are unimportan
 
 ```{r}
 news_tweets %>%
-  select(text) %>%                                             # this selects just the text of the tweets
-  unnest_tokens(words, text, token = "ngrams", n = 2) %>%      # get the bigrams
+  select(text) %>%                                                 # this selects just the text of the tweets
+  unnest_tokens(words, text, token = "ngrams", n = 2) %>% 
   separate(words, c("word1", "word2"), sep = " ") %>%          # separate them temporarily
   filter(!word1 %in% stop_words$word) %>%                      # remove if first word is a stop word
   filter(!word2 %in% stop_words$word) %>%                      # remove if second word is a stop word   
@@ -235,17 +209,22 @@ news_tweets %>%
 
 ```
 
-There are still some weird web address words in there. We can get rid of them by creating a vector of the words and then filtering those out the same way.
-additional filters to the code above.
 
+
+
+
+
+
+There are still some weird web address words in there. We can get rid of them by creating a vector of the words and then filtering those out the same way. The following code does two new things:  
+1. creates a new vector called remove_words with all of the special words we want to remove,  
+2. adds new filter lines to check for and remove any words that appear in remove_words  
 
 ```{r}
 remove_words = c("https", "t.co")
-
 
 news_tweets %>%
-  select(text) %>%                                             # this selects just the text of the tweets
-  unnest_tokens(words, text, token = "ngrams", n = 2) %>%      # get the bigrams
+  select(text) %>%                                                 
+  unnest_tokens(words, text, token = "ngrams", n = 2) %>% 
   separate(words, c("word1", "word2"), sep = " ") %>%          # separate them temporarily
   filter(!word1 %in% stop_words$word) %>%                      # remove if first word is a stop word
   filter(!word2 %in% stop_words$word) %>%                      # remove if second word is a stop word   
@@ -256,29 +235,14 @@ news_tweets %>%
 ```
 
 
-This is a common task in text analysis, creating a lexicon of words and comparing it to your text.
+This is a common task in text analysis, creating a dictionary of words and comparing it to your text.
 
-Once you are satisfied that it is working, make a dataframe of this new set of words called news_cleaned.
+Once you are satisfied that it is working, make a dataframe of this new set of words called news_bigrams. Here's a new way to do that. We have used this as an assignment operator: <- but you can also use it the other direction -> .
 
-```{r}
-remove_words = c("https", "t.co")
+Copy-paste the above code chunk, but then put the following line at the end of the last line:
+-> news_bigrams
 
-
-news_bigrams <- news_tweets %>%
-  select(text) %>%                                             # this selects just the text of the tweets
-  unnest_tokens(words, text, token = "ngrams", n = 2) %>%      # get the bigrams
-  separate(words, c("word1", "word2"), sep = " ") %>%          # separate them temporarily
-  filter(!word1 %in% stop_words$word) %>%                      # remove if first word is a stop word
-  filter(!word2 %in% stop_words$word) %>%                      # remove if second word is a stop word   
-  filter(!word1 %in% remove_words) %>%                         # these two lines remove our remove_words
-  filter(!word2 %in% remove_words) %>%                         
-  unite(words, word1, word2, sep = " ")                        # put them back together
-
-```
-
-
-
-Create a new chunk below and execute a line with news_bigrams to view it.
+Then view the new data frame by typing in its name.
 
 
 
@@ -287,30 +251,28 @@ Create a new chunk below and execute a line with news_bigrams to view it.
 
 
 
-Now count the top bigrams by piping news_bigrams to a second line with count(words, sort = T)
+
+Now count the top bigrams by piping news_bigrams to count(words, sort = T)
 
 
-```{r}
-news_bigrams %>% 
-  count(words, sort = T)
-```
+
+
+
 
 
 
 Create a word cloud of these bigrams by copy-pasting the chunk you created above and then adding the following lines: top_n(100), and wordcloud2(size = .5).
 
 
-```{r}
-news_bigrams %>% 
-  count(words, sort = T) %>% 
-  top_n(100) %>% 
-  wordcloud2(size = .5)
-
-```
 
 
 
-Using bigrams, we can also see what words typically follow a given word. For example, which words follow trump and pelosi?
+
+
+
+
+
+What is really useful about bigrams is that it allows us to look for a specific words and see what other words are associated with it. For example, we might be interested in which words follow trump and pelosi. That will give us a sense of how the news describes these two people.
 
 
 ```{r}
@@ -330,14 +292,10 @@ Take all of the above chunk that creates the trump/pelosi counts, put it on top 
 
 
 ```{r}
-first_word <- c("trump", "pelosi")                                  # these need to be lowercase
 
-news_bigrams %>%             
-  count(words, sort = TRUE) %>%
-  separate(words, c("word1", "word2"), sep = " ") %>%       # separate the two words
-  filter(word1 %in% first_word) %>%                          # find first words from our list
-  count(word1, word2, wt = n, sort = TRUE) %>% 
-  rename(total = nn) %>% 
+
+
+
   mutate(word2 = factor(word2, levels = rev(unique(word2)))) %>%     # put the words in order
   group_by(word1) %>% 
   top_n(5) %>% 
@@ -362,21 +320,8 @@ news_bigrams %>%
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 Assignment:
-Select another news organization and grab 3000 of their tweets.
+Select another news organization and grab 5000 of their tweets.
 Some possibilities:
 For Billings Gazette headlines: billingsgazette
 Wall Street Journal: wsj
@@ -385,7 +330,7 @@ CNN: cnn
 CNN breaking news: cnnbrk
 USA Today: usatoday
 
-1. Unnest the words of the tweets, remove stop words and urls, and create a table and a word cloud of the top words.  
+1. Unnest the words of the tweets, remove stop words and weird web "words", and create a table and a word cloud of the top words.  
 2. Conduct a sentiment analysis using bing, remove any errors like trump = positive, and create a graph of the words that contribute most to each sentiment.  
 3. Do the same as above but with the nrc sentiment lexicon.  
 4. Unnest the tweets as bigrams, remove stop words and errors, and create a table and word cloud of the most common bigrams.  
