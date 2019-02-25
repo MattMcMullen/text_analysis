@@ -31,16 +31,16 @@ Once you get that working, let's work through how to get information from Genius
 search_song("like a rolling stone")
 ```
 
-2. using song id, get more info about it. Get the album_id of the album the song is on.
+2. Put the song_id number into the parentheses below to get more info about it.
 
 ```{r}
-get_song_meta(54784)
+get_song_meta()
 ```
 
-3. using album id, get tracks on the album. this one we have to save as a file.
+3. One of the columns above is album_id. Enter that number into the parentheses below to get all of the other tracks on the album. this one we have to save as a file.
 
 ```{r}
-highway_tracks <- scrape_tracklist(13573)
+highway_tracks <- scrape_tracklist()
 highway_tracks
 ```
 
