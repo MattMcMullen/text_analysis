@@ -178,7 +178,8 @@ highway_words %>%
 ### Other sentiment dictionaries
 
 
-There are other sentiment dictionaries besides bing. One is called nrc. 
+Another sentiment dictionary is nrc, which stands for National Research Council, a government agency in Canada similar to the National Science Foundation in the US.
+
 
 ```{r}
 nrc <- get_sentiments("nrc")
